@@ -1,21 +1,22 @@
 'use client';
 
-import React from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import ConnectWalletButton from '@/components/ConnectWalletButton';
 import { useCrossmint } from '@/components/CrossmintProvider';
 import Navbar from '@/components/Navbar';
 
 export default function AuthPage() {
-  const { isConnected, userProfile } = useCrossmint();
   const router = useRouter();
-  
-  // Redirect to dashboard if already authenticated
-  React.useEffect(() => {
-    if (isConnected && userProfile) {
+  const { connect, isLoading, error } = useCrossmint();
+
+  const handleConnect = async () => {
+    try {
+      await connect();
       router.push('/dashboard');
+    } catch (err) {
+      console.error('Wallet connection error:', err);
     }
-  }, [isConnected, userProfile, router]);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
@@ -33,15 +34,28 @@ export default function AuthPage() {
           </div>
           
           <div className="mt-8 space-y-6">
-            <div className="flex items-center justify-center">
-              <ConnectWalletButton />
-            </div>
+            <button
+              onClick={handleConnect}
+              disabled={isLoading}
+              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+            >
+              {isLoading ? 'Connecting...' : 'Connect with Passkey'}
+            </button>
             
-            <div className="text-sm text-center">
-              <p className="text-gray-500 dark:text-gray-400">
-                By connecting, you agree to our terms of service
-              </p>
-            </div>
+            {error && (
+              <div className="rounded-md bg-red-50 p-4">
+                <div className="flex">
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-red-800">
+                      Error
+                    </h3>
+                    <div className="mt-2 text-sm text-red-700">
+                      {error}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

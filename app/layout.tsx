@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { CrossmintAuthProvider } from "@/components/CrossmintProvider";
+import { Providers } from '@/components/Providers';
 
 const inter = Inter({
   subsets: ["latin"],
@@ -9,21 +9,21 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Crossmint Auth Demo",
-  description: "Next.js app with Crossmint authentication and Supabase",
+  title: "Crossmint Passkey Demo",
+  description: "A demo of Crossmint passkey integration",
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
     <html lang="en">
       <body className={`${inter.variable} antialiased`}>
-        <CrossmintAuthProvider>
+        <Providers>
           {children}
-        </CrossmintAuthProvider>
+        </Providers>
       </body>
     </html>
   );

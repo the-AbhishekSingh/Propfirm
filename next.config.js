@@ -3,6 +3,10 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
+  env: {
+    MOBULA_API_KEY: process.env.MOBULA_API_KEY,
+    MOBULA_API_URL: process.env.MOBULA_API_URL || 'https://api.mobula.io',
+  },
   images: {
     remotePatterns: [
       {
@@ -47,7 +51,7 @@ const nextConfig = {
       }
     ],
     unoptimized: true,
-    domains: ['assets.coingecko.com', 'cryptologos.cc', 's2.coinmarketcap.com'],
+    domains: ['assets.coingecko.com', 'cryptologos.cc', 's2.coinmarketcap.com', 'raw.githubusercontent.com'],
   },
   async headers() {
     return [

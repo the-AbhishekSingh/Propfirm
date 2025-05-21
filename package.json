@@ -10,13 +10,15 @@
   },
   "dependencies": {
     "@crossmint/client-sdk-react-ui": "^1.19.11",
+    "@supabase/auth-helpers-react": "^0.5.0",
     "@supabase/supabase-js": "^2.49.4",
     "clsx": "^2.1.1",
     "next": "14.1.0",
     "pino-pretty": "^13.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "tailwind-merge": "^3.3.0"
+    "tailwind-merge": "^3.3.0",
+    "zustand": "^5.0.4"
   },
   "devDependencies": {
     "@types/node": "^20",

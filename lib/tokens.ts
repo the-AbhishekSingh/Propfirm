@@ -7,20 +7,32 @@ export interface Token {
   logo: string;
   market_cap: number;
   change_24h: number;
-  rank?: number;
-  previousPrice?: number; // Track previous price for animation
-  lastUpdated?: number;   // Timestamp of last update
+  volume_24h: number;
+  rank: number;
+  lastUpdated: number;
+  // Additional data
+  high_24h: number;
+  low_24h: number;
+  ath: number;
+  ath_change_percentage: number;
+  ath_date: string;
+  atl: number;
+  atl_change_percentage: number;
+  atl_date: string;
+  circulating_supply: number;
+  total_supply: number | null;
+  max_supply: number | null;
 }
 
 // Function to store token data in localStorage
 export function storeTokensInCache(tokens: Token[]) {
   if (typeof window !== 'undefined') {
     try {
-      localStorage.setItem('mobulaTokens', JSON.stringify(tokens));
-      localStorage.setItem('mobulaTokensTimestamp', Date.now().toString());
-      console.log(`Stored ${tokens.length} tokens from Mobula in localStorage cache`);
+      localStorage.setItem('tokens', JSON.stringify(tokens));
+      localStorage.setItem('tokensTimestamp', Date.now().toString());
+      console.log(`Stored ${tokens.length} tokens in localStorage cache`);
     } catch (err) {
-      console.error('Error storing Mobula tokens in localStorage:', err);
+      console.error('Error storing tokens in localStorage:', err);
     }
   }
 }
@@ -29,22 +41,18 @@ export function storeTokensInCache(tokens: Token[]) {
 export function getTokensFromCache(): Token[] | null {
   if (typeof window !== 'undefined') {
     try {
-      const tokensJson = localStorage.getItem('mobulaTokens');
+      const tokensJson = localStorage.getItem('tokens');
       if (tokensJson) {
         const tokens = JSON.parse(tokensJson) as Token[];
-        const timestamp = parseInt(localStorage.getItem('mobulaTokensTimestamp') || '0', 10);
+        const timestamp = parseInt(localStorage.getItem('tokensTimestamp') || '0', 10);
         const now = Date.now();
-        const maxAge = 2 * 60 * 60 * 1000; // 2 hours (ensure frequent updates)
+        const maxAge = 5 * 60 * 1000; // 5 minutes
         
         if (now - timestamp <= maxAge) {
-          console.log(`Using ${tokens.length} tokens from Mobula cache (less than 2 hours old)`);
-          return tokens.map(token => ({
-            ...token,
-            previousPrice: token.price,
-            lastUpdated: Date.now()
-          }));
+          console.log(`Using ${tokens.length} tokens from cache (less than 5 minutes old)`);
+          return tokens;
         } else {
-          console.log('Cached tokens are too old, fetching fresh data from Mobula');
+          console.log('Cached tokens are too old, fetching fresh data');
           return null;
         }
       }
@@ -56,184 +64,106 @@ export function getTokensFromCache(): Token[] | null {
 }
 
 // Function to fetch top tokens from Mobula.io
-export async function fetchTopTokens(limit = 300): Promise<Token[]> {
+export async function fetchTopTokens(limit: number = 100): Promise<Token[]> {
+  const apiKey = process.env.MOBULA_API_KEY;
+  const apiUrl = process.env.MOBULA_API_URL?.replace('/api/1', '') || 'https://api.mobula.io';
+
+  // Debug logging
+  console.log('Environment check:', {
+    hasApiKey: !!apiKey,
+    apiKeyLength: apiKey?.length,
+    apiUrl,
+    envKeys: Object.keys(process.env).filter(key => key.includes('MOBULA'))
+  });
+
+  if (!apiKey) {
+    console.error('MOBULA_API_KEY is not configured');
+    throw new Error('API key not configured');
+  }
+
   try {
     console.log(`Fetching top ${limit} tokens from Mobula.io...`);
-
-    // Try server-side proxy first
-    try {
-      console.log('Fetching tokens from server-side proxy...');
-      const proxyResponse = await fetch('/api/coinmarketcap', {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json'
-        },
-        cache: 'no-store'
-      });
-      
-      if (proxyResponse.ok) {
-        const data = await proxyResponse.json();
-        console.log('API response received:', {
-          status: proxyResponse.status,
-          hasData: !!data,
-          dataLength: data?.data?.length || 0,
-          sampleData: data?.data?.slice(0, 1)
-        });
-        
-        if (data && Array.isArray(data.data) && data.data.length > 0) {
-          // Transform data to match our Token interface
-          const tokens: Token[] = data.data.map((item: any, index: number) => {
-            // Validate required fields
-            if (!item.name || !item.symbol) {
-              console.warn(`Skipping invalid token at index ${index}:`, item);
-              return null;
-            }
-
-            // Clean and validate data
-            const name = item.name.trim();
-            const symbol = item.symbol.trim().toUpperCase();
-            
-            // Ensure we have valid numeric values
-            const price = typeof item.price === 'number' && !isNaN(item.price) ? item.price : 0;
-            const market_cap = typeof item.market_cap === 'number' && !isNaN(item.market_cap) ? item.market_cap : 0;
-            const change_24h = typeof item.change_24h === 'number' && !isNaN(item.change_24h) ? item.change_24h : 0;
-            
-            return {
-              id: item.id || `mobula-${index}`,
-              name,
-              symbol,
-              price,
-              logo: item.logo || '',
-              market_cap,
-              change_24h,
-              rank: item.rank || index + 1,
-              lastUpdated: Date.now()
-            };
-          }).filter((token: Token | null): token is Token => token !== null);
-          
-          // Sort by market cap
-          const sortedTokens = tokens.sort((a, b) => {
-            if (a.market_cap !== b.market_cap) {
-              return b.market_cap - a.market_cap;
-            }
-            return (a.rank || 0) - (b.rank || 0);
-          });
-          
-          // Save to localStorage as cache
-          storeTokensInCache(sortedTokens);
-          
-          console.log(`Successfully processed ${sortedTokens.length} tokens`);
-          return sortedTokens;
-        }
-      }
-      console.log("Initial Mobula API request didn't return enough data, trying direct API...");
-    } catch (proxyError) {
-      console.error("Mobula proxy error:", proxyError);
-    }
     
-    // If proxy failed, try direct API call as fallback
-    console.log("Trying direct Mobula API access...");
-    try {
-      const MOBULA_API_KEY = process.env.MOBULA_API_KEY;
-      if (!MOBULA_API_KEY) {
-        throw new Error('MOBULA_API_KEY environment variable is not set');
-      }
-      
-      // Try direct API call with the correct endpoint
-      const directResponse = await fetch(`https://api.mobula.io/api/1/market/list?limit=${limit}`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${MOBULA_API_KEY}`
-        },
-        next: { revalidate: 0 },
-      });
-      
-      if (directResponse.ok) {
-        const data = await directResponse.json();
-        if (data && Array.isArray(data.data) && data.data.length > 0) {
-          console.log(`Got ${data.data.length} tokens directly from Mobula API`);
-          
-          // Transform data to match our Token interface
-          const tokens: Token[] = data.data.map((item: any, index: number) => {
-            // Validate required fields
-            if (!item.name || !item.symbol) {
-              console.warn(`Skipping invalid token at index ${index}:`, item);
-              return null;
-            }
-
-            // Clean and validate data
-            const name = item.name.trim();
-            const symbol = item.symbol.trim().toUpperCase();
-            
-            // Ensure we have valid numeric values
-            const price = typeof item.price === 'number' && !isNaN(item.price) ? item.price : 0;
-            const market_cap = typeof item.market_cap === 'number' && !isNaN(item.market_cap) ? item.market_cap : 0;
-            const change_24h = typeof item.change_24h === 'number' && !isNaN(item.change_24h) ? item.change_24h : 0;
-            
-            return {
-              id: item.id || `mobula-${index}`,
-              name,
-              symbol,
-              price,
-              logo: item.logo || '',
-              market_cap,
-              change_24h,
-              rank: item.rank || index + 1,
-              lastUpdated: Date.now()
-            };
-          }).filter((token: Token | null): token is Token => token !== null);
-          
-          // Sort by market cap
-          const sortedTokens = tokens.sort((a, b) => {
-            if (a.market_cap !== b.market_cap) {
-              return b.market_cap - a.market_cap;
-            }
-            return (a.rank || 0) - (b.rank || 0);
-          });
-          
-          // Cache the tokens
-          storeTokensInCache(sortedTokens);
-          
-          return sortedTokens;
-        }
-      }
-    } catch (directError) {
-      console.error("Direct Mobula API error:", directError);
-    }
+    // Use the correct API endpoint with query parameters
+    const params = new URLSearchParams({
+      blockchain: ['ethereum', 'bsc'].join(','), // Query multiple blockchains
+      limit: limit.toString()
+    });
     
-    // If all API attempts failed, check cache
-    console.log("All Mobula API attempts failed, checking localStorage cache...");
+    const url = `${apiUrl}/api/1/market/data?${params.toString()}`;
+    console.log('Request URL:', url);
+    console.log('Using API Key:', apiKey.substring(0, 5) + '...');
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      next: { revalidate: 300 } // Cache for 5 minutes
+    });
+
+    console.log('Response status:', response.status);
+    console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('API Error Response:', errorText);
+      throw new Error(`API request failed with status ${response.status}: ${errorText}`);
+    }
+
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text();
+      console.error('Unexpected response type:', contentType);
+      console.error('Response body:', text);
+      throw new Error(`Expected JSON response but got ${contentType}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data || !data.data) {
+      console.error('Invalid API response format:', data);
+      throw new Error('Invalid API response format');
+    }
+
+    console.log(`Received data from Mobula.io API`);
+    const tokens = [data.data].map(token => ({
+      id: token.id?.toString() || token.symbol?.toLowerCase(),
+      name: token.name || 'Unknown',
+      symbol: token.symbol || '???',
+      price: token.price || 0,
+      logo: token.logo || `/images/${token.symbol?.toLowerCase() || 'unknown'}.png`,
+      market_cap: token.market_cap || 0,
+      change_24h: token.price_change_24h || 0,
+      rank: token.rank || 999999,
+      lastUpdated: Date.now(),
+      high_24h: token.high_24h || 0,
+      low_24h: token.low_24h || 0,
+      ath: token.ath || 0,
+      ath_change_percentage: token.ath_change_percentage || 0,
+      ath_date: token.ath_date || '',
+      atl: token.atl || 0,
+      atl_change_percentage: token.atl_change_percentage || 0,
+      atl_date: token.atl_date || '',
+      circulating_supply: token.circulating_supply || 0,
+      total_supply: token.total_supply || null,
+      max_supply: token.max_supply || null
+    }));
+
+    // Cache the tokens
+    storeTokensInCache(tokens);
+    return tokens;
+  } catch (error) {
+    console.error('Error fetching tokens:', error);
+    // Try to get cached data as fallback
     const cachedTokens = getTokensFromCache();
     if (cachedTokens && cachedTokens.length > 0) {
+      console.log('Using cached tokens as fallback');
       return cachedTokens;
     }
-
-    // All attempts failed
-    console.error("All Mobula API attempts failed and no cache available");
-    throw new Error("Failed to fetch token data from Mobula.io");
-  } catch (error) {
-    console.error('Error fetching top tokens from Mobula:', error);
-    
-    // Last resort - check for any cached data regardless of age
-    if (typeof window !== 'undefined') {
-      try {
-        const tokensJson = localStorage.getItem('mobulaTokens');
-        if (tokensJson) {
-          console.log('Using expired Mobula cache data as last resort');
-          const tokens = JSON.parse(tokensJson) as Token[];
-          return tokens.map(token => ({
-            ...token,
-            lastUpdated: Date.now()
-          }));
-        }
-      } catch (e) {
-        console.error('Failed to load expired Mobula cache:', e);
-      }
-    }
-    
-    throw error; // Re-throw to let the UI handle it
+    throw error;
   }
 }
 
@@ -290,7 +220,6 @@ export async function updateTokenPrices(tokens: Token[]): Promise<Token[]> {
               
               return {
                 ...token,
-                previousPrice: priceChanged ? token.price : token.previousPrice,
                 price: newPrice,
                 change_24h: updatedData.change_24h || token.change_24h,
                 lastUpdated: now
@@ -312,5 +241,91 @@ export async function updateTokenPrices(tokens: Token[]): Promise<Token[]> {
   } catch (error) {
     console.error('Error updating token prices:', error);
     return tokens; // Return original tokens if update fails
+  }
+}
+
+// Function to fetch tokens from Mobula.io
+export async function fetchTokens(limit: number = 100): Promise<Token[]> {
+  const apiKey = process.env.MOBULA_API_KEY;
+  const apiUrl = process.env.MOBULA_API_URL || 'https://api.mobula.io';
+
+  if (!apiKey) {
+    console.error('MOBULA_API_KEY is not configured');
+    throw new Error('API key not configured');
+  }
+
+  try {
+    console.log(`Fetching ${limit} tokens from Mobula.io...`);
+    const url = `${apiUrl}/api/1/market/list?limit=${limit}`;
+    console.log('Request URL:', url);
+    console.log('Using API Key:', apiKey.substring(0, 5) + '...');
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      next: { revalidate: 300 } // Cache for 5 minutes
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('API Error Response:', errorText);
+      throw new Error(`API request failed with status ${response.status}: ${errorText}`);
+    }
+
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text();
+      console.error('Unexpected response type:', contentType);
+      console.error('Response body:', text);
+      throw new Error(`Expected JSON response but got ${contentType}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data || !Array.isArray(data)) {
+      console.error('Invalid API response format:', data);
+      throw new Error('Invalid API response format');
+    }
+
+    console.log(`Received ${data.length} tokens from Mobula.io API`);
+    const tokens = data.map(token => ({
+      id: token.id || token.symbol?.toLowerCase(),
+      name: token.name || 'Unknown',
+      symbol: token.symbol || '???',
+      price: token.price || 0,
+      logo: token.logo || `/images/${token.symbol?.toLowerCase() || 'unknown'}.png`,
+      market_cap: token.market_cap || 0,
+      change_24h: token.change_24h || 0,
+      rank: token.rank || 999999,
+      lastUpdated: Date.now(),
+      high_24h: token.high_24h || 0,
+      low_24h: token.low_24h || 0,
+      ath: token.ath || 0,
+      ath_change_percentage: token.ath_change_percentage || 0,
+      ath_date: token.ath_date || '',
+      atl: token.atl || 0,
+      atl_change_percentage: token.atl_change_percentage || 0,
+      atl_date: token.atl_date || '',
+      circulating_supply: token.circulating_supply || 0,
+      total_supply: token.total_supply || null,
+      max_supply: token.max_supply || null
+    }));
+
+    // Cache the tokens
+    storeTokensInCache(tokens);
+    return tokens;
+  } catch (error) {
+    console.error('Error fetching tokens:', error);
+    // Try to get cached data as fallback
+    const cachedTokens = getTokensFromCache();
+    if (cachedTokens && cachedTokens.length > 0) {
+      console.log('Using cached tokens as fallback');
+      return cachedTokens;
+    }
+    throw error;
   }
 } 
